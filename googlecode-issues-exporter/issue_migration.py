@@ -320,32 +320,32 @@ class GitHubIssueService(object):
     return self._github_service.PerformPostRequest(
         self._github_issues_url, json.dumps(issue))
 
-  def CloseIssue(self, issue_number):
+  def CloseIssue(self, issue_id):
     """Closes a GitHub issue.
 
     Args:
-      issue_number: The issue number.
+      issue_id: The issue number.
 
     Returns:
       A tuple of an HTTP response (https://developer.github.com/v3/#schema) and
       its content from the server which is decoded JSON.
     """
-    issue_url = "%s/%d" % (self._github_issues_url, issue_number)
+    issue_url = "%s/%d" % (self._github_issues_url, issue_id)
     json_state = json.dumps({"state": "closed"})
     return self._github_service.PerformPatchRequest(issue_url, json_state)
 
-  def CreateComment(self, issue_number, comment):
+  def CreateComment(self, issue_id, comment):
     """Creates a comment on a GitHub issue.
 
     Args:
-      issue_number: The issue number.
+      issue_id: The issue number.
       comment: The comment text.
 
     Returns:
       A tuple of an HTTP response (https://developer.github.com/v3/#schema) and
       its content from the server which is decoded JSON.
     """
-    comment_url = "%s/%d/comments" % (self._github_issues_url, issue_number)
+    comment_url = "%s/%d/comments" % (self._github_issues_url, issue_id)
     json_body = json.dumps({"body": comment})
     return self._github_service.PerformPostRequest(comment_url, json_body)
 
@@ -502,11 +502,11 @@ class IssueExporter(object):
       print "Status code: %s" % (response["status"])
       print "Content:     %s" % (content)
       return -1
-    issue_number = self._issue_service.GetIssueNumber(content)
+    issue_id = self._issue_service.GetIssueNumber(content)
 
-    return issue_number
+    return issue_id
 
-  def _CreateGitHubComments(self, comments, issue_number):
+  def _CreateGitHubComments(self, comments, issue_id):
     """Converts a list of issue comment from Google Code to GitHub.
 
     This will take a list of Google Code issue comments and create
@@ -514,7 +514,7 @@ class IssueExporter(object):
 
     Args:
       comments: A list of comments (each comment is just a string).
-      issue_number: The GitHub issue number.
+      issue_id: The GitHub issue number.
     """
     self._comment_total = len(comments)
     self._comment_number = 0
@@ -528,11 +528,11 @@ class IssueExporter(object):
       time.sleep(1.01)
 
       response, content = self._issue_service.CreateComment(
-        issue_number, comment["content"])
+        issue_id, comment["content"])
 
       if not _CheckSuccessful(response):
         print ("Failed to create issue comment (%s) for GitHub issue #%d"
-               % (comment["content"], issue_number))
+               % (comment["content"], issue_id))
         print "Status code: %s" % (response["status"])
         print "Content:     %s" % (content)
 
@@ -561,22 +561,22 @@ class IssueExporter(object):
       self._issue_number += 1
       self.UpdatedIssueFeed()
 
-      issue_number = self._CreateGitHubIssue(issue)
-      if issue_number < 0:
+      gh_issue_id = self._CreateGitHubIssue(issue)
+      if gh_issue_id < 0:
         continue
 
       if "items" in issue:
         # The first comment already is the issue body
         comments = issue["items"][1:]
         if comments:
-          self._CreateGitHubComments(comments, issue_number)
+          self._CreateGitHubComments(comments, gh_issue_id)
 
       # Close the issue if it is closed
       is_open = self._issue_service.IsIssueOpen(issue)
       if not is_open:
-        response, content = self._issue_service.CloseIssue(issue_number)
+        response, content = self._issue_service.CloseIssue(gh_issue_id)
         if not _CheckSuccessful(response):
-          print "Failed to close GitHub issue #%s" % (issue_number)
+          print "Failed to close GitHub issue #%s" % (gh_issue_id)
           print "Status code: %s" % (response["status"])
           print "Content:     %s" % (content)
 
