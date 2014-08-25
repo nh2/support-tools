@@ -490,6 +490,11 @@ class IssueExporter(object):
     issue_title = issue_json["title"]
     # Remove the state as it is no longer needed.
     del issue_json["state"]
+
+    # The first comment becomes the issue body
+    if "items" in issue_json:
+      issue_json["body"] = issue_json["items"][0]["content"]
+
     response, content = self._issue_service.CreateIssue(issue_json)
 
     if not _CheckSuccessful(response):
@@ -561,7 +566,10 @@ class IssueExporter(object):
         continue
 
       if "items" in issue:
-        self._CreateGitHubComments(issue["items"], issue_number)
+        # The first comment already is the issue body
+        comments = issue["items"][1:]
+        if comments:
+          self._CreateGitHubComments(comments, issue_number)
 
       # Close the issue if it is closed
       is_open = self._issue_service.IsIssueOpen(issue)
