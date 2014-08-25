@@ -547,9 +547,8 @@ class IssueExporter(object):
     skipped_issues = 0
     for issue in self._issue_json_data:
 
-      issue_title = issue["title"]
-
-      if issue_title in self._previously_created_issues:
+      # Skip issue if it already exists
+      if issue["title"] in self._previously_created_issues:
         skipped_issues += 1
         continue
 
