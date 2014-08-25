@@ -487,7 +487,8 @@ class IssueExporter(object):
       print "Failed to create issue: %s" % (issue_title)
       print "Status code: %s" % (response["status"])
       print "Content:     %s" % (content)
-      return -1
+      raise Exception("Failed to create issue with data %s" % (issue_json))
+
     issue_id = self._issue_service.GetIssueNumber(content)
 
     return issue_id
@@ -546,8 +547,6 @@ class IssueExporter(object):
       print ("Issue: %d/%d" % (issue_number, issue_total))
 
       gh_issue_id = self._CreateGitHubIssue(issue)
-      if gh_issue_id < 0:
-        continue
 
       if "items" in issue:
         # The first comment already is the issue body
