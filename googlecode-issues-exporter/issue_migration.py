@@ -488,7 +488,6 @@ class IssueExporter(object):
       The issue number assigned by GitHub or -1 if there was an error.
     """
     issue_title = issue_json["title"]
-    is_open = self._issue_service.IsIssueOpen(issue_json)
     # Remove the state as it is no longer needed.
     del issue_json["state"]
     response, content = self._issue_service.CreateIssue(issue_json)
@@ -499,13 +498,6 @@ class IssueExporter(object):
       print "Content:     %s" % (content)
       return -1
     issue_number = self._issue_service.GetIssueNumber(content)
-
-    if not is_open:
-      response, content = self._issue_service.CloseIssue(issue_number)
-      if not _CheckSuccessful(response):
-        print "Failed to close GitHub issue #%s" % (issue_number)
-        print "Status code: %s" % (response["status"])
-        print "Content:     %s" % (content)
 
     return issue_number
 
@@ -570,6 +562,15 @@ class IssueExporter(object):
 
       if "items" in issue:
         self._CreateGitHubComments(issue["items"], issue_number)
+
+      # Close the issue if it is closed
+      is_open = self._issue_service.IsIssueOpen(issue)
+      if not is_open:
+        response, content = self._issue_service.CloseIssue(issue_number)
+        if not _CheckSuccessful(response):
+          print "Failed to close GitHub issue #%s" % (issue_number)
+          print "Status code: %s" % (response["status"])
+          print "Content:     %s" % (content)
 
     if skipped_issues > 0:
       print ("Skipped %d/%d issue previously uploaded.  Most likely due to"
