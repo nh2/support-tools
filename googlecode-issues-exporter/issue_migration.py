@@ -470,11 +470,9 @@ class IssueExporter(object):
 
     This displays the current status of the script to the user.
     """
-    feed_string = ("\rIssue: %d/%d -> Comment: %d/%d" %
-                   (self._issue_number, self._issue_total,
-                    self._comment_number, self._comment_total))
-    sys.stdout.write(feed_string)
-    sys.stdout.flush()
+    print ("Issue: %d/%d -> Comment: %d/%d" %
+           (self._issue_number, self._issue_total,
+            self._comment_number, self._comment_total))
 
   def _CreateGitHubIssue(self, issue_json):
     """Converts an issue from Google Code to GitHub.
@@ -496,16 +494,14 @@ class IssueExporter(object):
     response, content = self._issue_service.CreateIssue(issue_json)
 
     if not _CheckSuccessful(response):
-      # Newline character at the beginning of the line to allows for in-place
-      # updating of the counts of the issues and comments.
-      print "\nFailed to create issue: %s" % (issue_title)
+      print "Failed to create issue: %s" % (issue_title)
       return -1
     issue_number = self._issue_service.GetIssueNumber(content)
 
     if not is_open:
       response, content = self._issue_service.CloseIssue(issue_number)
       if not _CheckSuccessful(response):
-        print "\nFailed to close GitHub issue #%s" % (issue_number)
+        print "Failed to close GitHub issue #%s" % (issue_number)
 
     return issue_number
 
@@ -529,7 +525,7 @@ class IssueExporter(object):
                                                       comment["content"])
 
       if not _CheckSuccessful(response):
-        print ("\nFailed to create issue comment (%s) for GitHub issue #%d"
+        print ("Failed to create issue comment (%s) for GitHub issue #%d"
                % (comment["content"], issue_number))
 
   def Start(self):
@@ -565,7 +561,7 @@ class IssueExporter(object):
         self._CreateGitHubComments(issue["items"], issue_number)
 
     if skipped_issues > 0:
-      print ("\nSkipped %d/%d issue previously uploaded.  Most likely due to"
+      print ("Skipped %d/%d issue previously uploaded.  Most likely due to"
              " the script being aborted or killed." %
              (skipped_issues, self._issue_total))
 
@@ -630,7 +626,7 @@ def main(args):
   try:
     issue_exporter.Init()
     issue_exporter.Start()
-    print "\nDone!\n"
+    print "Done!\n"
   except IOError, e:
     print "[IOError] ERROR: %s" % e
   except InvalidUserError, e:
