@@ -521,6 +521,11 @@ class IssueExporter(object):
     for comment in comments:
       self._comment_number += 1
       self.UpdatedIssueFeed()
+
+      # Make sure each comment is created with at least 1s time difference
+      # (after issue body and between comments).
+      time.sleep(1.01)
+
       response, _ = self._issue_service.CreateComment(issue_number,
                                                       comment["content"])
 
