@@ -582,21 +582,21 @@ def main(args):
   parser = argparse.ArgumentParser()
   parser.add_argument("--github_oauth_token", required=True,
                       help="You can generate an oauth token here: "
-                      "https://github.com/settings/applications")
+                      " https://github.com/settings/applications")
   parser.add_argument("--github_owner_username", required=True,
                       help="The project ownsers GitHub username")
   parser.add_argument("--github_repo_name", required=True,
                       help="The GitHub repository you wish to add the issues"
-                      "to.")
+                      " to.")
   parser.add_argument("--issue_file_path", required=True,
                       help="The path to the file containing the issues from"
-                      "Google Code.")
+                      " Google Code.")
   parser.add_argument("--project_name", required=True,
                       help="The name of the Google Code project you wish to"
-                      "export")
+                      " export")
   parser.add_argument("--assignee_file_path", required=False,
                       help="The path to the file containing a mapping from"
-                      "email address to github username.")
+                      " email address to github username.")
   parsed_args, unused_unknown_args = parser.parse_known_args(args)
 
   github_service = GitHubService(parsed_args.github_owner_username,
