@@ -349,29 +349,6 @@ class GitHubIssueService(object):
     json_body = json.dumps({"body": comment})
     return self._github_service.PerformPostRequest(comment_url, json_body)
 
-  def GetIssueNumber(self, content):
-    """Get the issue number from a newly created GitHub issue.
-
-    Args:
-      content: The content from an HTTP response.
-
-    Returns:
-      The GitHub issue number.
-    """
-    return content["number"]
-
-  def IsIssueOpen(self, issue):
-    """Check if an issue is marked as open.
-
-    Args:
-      issue: A dictionary matching the GitHub JSON format for a get request.
-             https://developer.github.com/v3/issues/#get-a-single-issue.
-
-    Returns:
-      True if the issue was open.
-    """
-    return "state" in issue and issue["state"] == "open"
-
 
 class IssueExporter(object):
   """Issue Migration.
@@ -469,6 +446,7 @@ class IssueExporter(object):
 
     Args:
       issue_json: A Google Code issue in as an object.
+      body_text: The text with which the issue starts.
 
     Returns:
       The issue number assigned by GitHub or -1 if there was an error.
@@ -489,7 +467,7 @@ class IssueExporter(object):
       print "Content:     %s" % (content)
       raise Exception("Failed to create issue with data %s" % (issue_json))
 
-    issue_id = self._issue_service.GetIssueNumber(content)
+    issue_id = content["number"]
 
     return issue_id
 
@@ -555,8 +533,7 @@ class IssueExporter(object):
           self._CreateGitHubComments(comments, gh_issue_id)
 
       # Close the issue if it is closed
-      is_open = self._issue_service.IsIssueOpen(issue)
-      if not is_open:
+      if issue["state"] != "open":
         response, content = self._issue_service.CloseIssue(gh_issue_id)
         if not _CheckSuccessful(response):
           print "Failed to close GitHub issue #%s" % (gh_issue_id)
