@@ -495,6 +495,8 @@ class IssueExporter(object):
 
     if not _CheckSuccessful(response):
       print "Failed to create issue: %s" % (issue_title)
+      print "Status code: %s" % (response["status"])
+      print "Content:     %s" % (content)
       return -1
     issue_number = self._issue_service.GetIssueNumber(content)
 
@@ -502,6 +504,8 @@ class IssueExporter(object):
       response, content = self._issue_service.CloseIssue(issue_number)
       if not _CheckSuccessful(response):
         print "Failed to close GitHub issue #%s" % (issue_number)
+        print "Status code: %s" % (response["status"])
+        print "Content:     %s" % (content)
 
     return issue_number
 
@@ -526,12 +530,14 @@ class IssueExporter(object):
       # (after issue body and between comments).
       time.sleep(1.01)
 
-      response, _ = self._issue_service.CreateComment(issue_number,
-                                                      comment["content"])
+      response, content = self._issue_service.CreateComment(
+        issue_number, comment["content"])
 
       if not _CheckSuccessful(response):
         print ("Failed to create issue comment (%s) for GitHub issue #%d"
                % (comment["content"], issue_number))
+        print "Status code: %s" % (response["status"])
+        print "Content:     %s" % (content)
 
   def Start(self):
     """The primary function that runs this script.
