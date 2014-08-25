@@ -398,11 +398,6 @@ class IssueExporter(object):
     self._previously_created_issues = set()
     self._assignee_map = {}
 
-    self._issue_total = 0
-    self._issue_number = 0
-    self._comment_number = 0
-    self._comment_total = 0
-
   def Init(self):
     """Initialize the needed variables."""
     self._issue_service = GitHubIssueService(self._github_service)
@@ -465,15 +460,6 @@ class IssueExporter(object):
     for issue in issues:
       self._previously_created_issues.add(issue["title"])
 
-  def UpdatedIssueFeed(self):
-    """Update issue count 'feed'.
-
-    This displays the current status of the script to the user.
-    """
-    print ("Issue: %d/%d -> Comment: %d/%d" %
-           (self._issue_number, self._issue_total,
-            self._comment_number, self._comment_total))
-
   def _CreateGitHubIssue(self, issue_json):
     """Converts an issue from Google Code to GitHub.
 
@@ -516,12 +502,12 @@ class IssueExporter(object):
       comments: A list of comments (each comment is just a string).
       issue_id: The GitHub issue number.
     """
-    self._comment_total = len(comments)
-    self._comment_number = 0
+    comment_total = len(comments)
+    comment_number = 0
 
     for comment in comments:
-      self._comment_number += 1
-      self.UpdatedIssueFeed()
+      comment_number += 1
+      print ("  Comment: %d/%d" % (comment_number, comment_total))
 
       # Make sure each comment is created with at least 1s time difference
       # (after issue body and between comments).
@@ -546,8 +532,8 @@ class IssueExporter(object):
       InvalidUserError: The user passed in a invalid GitHub username.
       InvalidUserMappingError: The user passed in an invalid data object.
     """
-    self._issue_total = len(self._issue_json_data)
-    self._issue_number = 0
+    issue_total = len(self._issue_json_data)
+    issue_number = 0
     skipped_issues = 0
     for issue in self._issue_json_data:
 
@@ -558,8 +544,8 @@ class IssueExporter(object):
 
       issue["assignee"] = self._GetIssueAssignee(issue)
 
-      self._issue_number += 1
-      self.UpdatedIssueFeed()
+      issue_number += 1
+      print ("Issue: %d/%d" % (issue_number, issue_total))
 
       gh_issue_id = self._CreateGitHubIssue(issue)
       if gh_issue_id < 0:
@@ -583,7 +569,7 @@ class IssueExporter(object):
     if skipped_issues > 0:
       print ("Skipped %d/%d issue previously uploaded.  Most likely due to"
              " the script being aborted or killed." %
-             (skipped_issues, self._issue_total))
+             (skipped_issues, issue_total))
 
 
 def main(args):
