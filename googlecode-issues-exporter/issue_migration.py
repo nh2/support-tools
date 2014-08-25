@@ -533,9 +533,8 @@ class IssueExporter(object):
       InvalidUserMappingError: The user passed in an invalid data object.
     """
     issue_total = len(self._issue_json_data)
-    issue_number = 0
     skipped_issues = 0
-    for issue in self._issue_json_data:
+    for issue_number, issue in enumerate(self._issue_json_data, 1):
 
       # Skip issue if it already exists
       if issue["title"] in self._previously_created_issues:
@@ -544,7 +543,6 @@ class IssueExporter(object):
 
       issue["assignee"] = self._GetIssueAssignee(issue)
 
-      issue_number += 1
       print ("Issue: %d/%d" % (issue_number, issue_total))
 
       gh_issue_id = self._CreateGitHubIssue(issue)
