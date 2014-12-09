@@ -74,6 +74,27 @@ class InvalidUserMappingError(Error):
   """Error for an invalid user mapping file."""
 
 
+class InvalidProjectData(Error):
+  """Error for invalid user project dump."""
+
+
+class AssigneeNotCollaboratorError(Error):
+  """Error for when an assignee is not a collaborator in the repository."""
+
+
+class UnexpectedIdError(Error):
+  """Error for when GitHub gives assigns us an ID we didn't want."""
+
+
+class IdTakenByOtherIssueError(Error):
+  """Error for we want to create an issue with a certain ID, but that ID
+  is already taken by an existing issue with different content."""
+
+
+class GithubApiError(Error):
+  """Error for the GitHub API returning an error."""
+
+
 class ProjectNotFoundError(Error):
   """Error for a non-existent project."""
 
@@ -349,6 +370,38 @@ class GitHubIssueService(object):
     json_body = json.dumps({"body": comment})
     return self._github_service.PerformPostRequest(comment_url, json_body)
 
+class GitHubRepoService(object):
+  """GitHub repository operations.
+
+  Handles repository operations on the GitHub API.
+  """
+
+  def __init__(self, github_service):
+    """Initialize the GitHubRepoService.
+
+    Args:
+      github_service: The GitHub service.
+    """
+    self._github_service = github_service
+    self._github_repo_url = ("/repos/%s/%s" %
+                             (self._github_service.github_owner_username,
+                              self._github_service.github_repo_name))
+
+  def GetCollaboratorUserNames(self):
+    """Gets all of the collaborators the GitHub repository.
+
+    Returns:
+      The list of all of the issues for the given repository.
+
+    Raises:
+      GithubApiError: If an error using the GitHub API occurred.
+    """
+    response, content = self._github_service.PerformGetRequest(
+        self._github_repo_url + "/collaborators")
+    if not _CheckSuccessful(response):
+      raise GithubApiError("Failed to retrieve collaborators.")
+    return [u["login"] for u in content]
+
 
 class IssueExporter(object):
   """Issue Migration.
@@ -356,7 +409,8 @@ class IssueExporter(object):
   Handles the uploading issues from Google Code to GitHub.
   """
 
-  def __init__(self, github_service, issue_json_data, assignee_data=None):
+  def __init__(self, github_service, issue_json_data, assignee_data=None,
+               preserve_ids=False):
     """Initialize the IssueExporter.
 
     Args:
@@ -364,19 +418,24 @@ class IssueExporter(object):
       issue_json_data: A data object of issues from Google Code.
       assignee_data: A string of email addresses mapped to GitHub usernames
           that are separated by ':'.  Each couple is separated by a newline.
+      preserve_ids: Whether created issue IDs shall be chosen to match the
+                    Google Code issue IDs exactly."
     """
     self._github_service = github_service
     self._github_owner_username = self._github_service.github_owner_username
     self._issue_json_data = issue_json_data
     self._assignee_data = assignee_data
+    self._preserve_ids = preserve_ids
 
+    self._repo_service = None
     self._issue_service = None
     self._user_service = None
-    self._previously_created_issues = set()
+    self._previously_created_issues = {}  # maps from title to issue details
     self._assignee_map = {}
 
   def Init(self):
     """Initialize the needed variables."""
+    self._repo_service = GitHubRepoService(self._github_service)
     self._issue_service = GitHubIssueService(self._github_service)
     self._user_service = GitHubUserService(self._github_service)
     self._GetAllPreviousIssues()
@@ -435,9 +494,9 @@ class IssueExporter(object):
     closed_issues = self._issue_service.GetIssues("closed")
     issues = open_issues + closed_issues
     for issue in issues:
-      self._previously_created_issues.add(issue["title"])
+      self._previously_created_issues[issue["title"]] = issue
 
-  def _CreateGitHubIssue(self, issue_json):
+  def _CreateGitHubIssue(self, issue_json, require_id=None):
     """Converts an issue from Google Code to GitHub.
 
     This will take the Google Code issue and create a corresponding issue on
@@ -446,30 +505,56 @@ class IssueExporter(object):
 
     Args:
       issue_json: A Google Code issue in as an object.
-      body_text: The text with which the issue starts.
+      require_id: Ensure that the issue ID created by GitHub is this one
+                  (throw an exception otherwise).
 
     Returns:
       The issue number assigned by GitHub or -1 if there was an error.
+
+    Raises:
+      UnexpectedIdError: If require_id was given and GitHub assigned us a
+                         different ID.
     """
     issue_title = issue_json["title"]
-    # Remove the state as it is no longer needed.
-    del issue_json["state"]
 
-    # The first comment becomes the issue body
-    if "items" in issue_json:
-      issue_json["body"] = issue_json["items"][0]["content"]
+    request_json = {k: issue_json.get(k) for k in [
+      "title", "body", "assignee", "milestone", "labels"]}
+    # Work around GitHub bug (reported 2014-08-26) in which creating a label
+    # "Mylabel" when "mylabel" exists (case different) raises HTTP 500 error
+    # So we simply make all labels lowercase as a workaround.
+    if request_json["labels"]:
+      request_json["labels"] = [l.lower() for l in request_json["labels"]]
 
-    response, content = self._issue_service.CreateIssue(issue_json)
+    response, content = self._issue_service.CreateIssue(request_json)
 
     if not _CheckSuccessful(response):
       print "Failed to create issue: %s" % (issue_title)
+      print "Sent JSON:   %s" % (request_json)
       print "Status code: %s" % (response["status"])
       print "Content:     %s" % (content)
-      raise Exception("Failed to create issue with data %s" % (issue_json))
+      raise GithubApiError("Failed to create GitHub issue")
 
     issue_id = content["number"]
 
+    if require_id is not None and issue_id != require_id:
+      raise UnexpectedIdError("Got ID %d from GitHub, but we wanted ID %d"
+                              % (issue_id, require_id))
+
     return issue_id
+
+  def _CloseGitHubIssue(self, issue_id):
+    """Closes a GitHub issue.
+
+    Raises:
+      Exception: When the issue could not be closed.
+    """
+    response, content = self._issue_service.CloseIssue(issue_id)
+
+    if not _CheckSuccessful(response):
+      print "Failed to close GitHub issue #%s" % (issue_id)
+      print "Status code: %s" % (response["status"])
+      print "Content:     %s" % (content)
+      raise GithubApiError("Failed to close GitHub issue")
 
   def _CreateGitHubComments(self, comments, issue_id):
     """Converts a list of issue comment from Google Code to GitHub.
@@ -490,7 +575,7 @@ class IssueExporter(object):
 
       # Make sure each comment is created with at least 1s time difference
       # (after issue body and between comments).
-      time.sleep(1.01)
+      # time.sleep(1.01)
 
       response, content = self._issue_service.CreateComment(
         issue_id, comment["content"])
@@ -501,6 +586,27 @@ class IssueExporter(object):
         print "Status code: %s" % (response["status"])
         print "Content:     %s" % (content)
 
+  def _CommentImportNote(self, issue, comment):
+    """Generates add a note  that the comment was imported from Google Code.
+
+    Args:
+      issue: A JSON issue object in the format of Takeout for Google Code.
+      comment: A JSON "items" object in the format of Takeout for Google Code.
+
+    Returns:
+      A string to be prepended to an issue comment.
+    """
+    gc_issue_id = issue["id"]
+    author = comment["author"]["name"].split("@")[0] + "@..."
+    author_link = comment["author"]["htmlLink"]
+    creation_date = comment["published"]
+    import_note = (
+      "<sub>Imported from [Google Code #%d]("
+      "https://code.google.com/p/ganeti/issues/detail?id=%d),"
+      " created by [`%s`](%s) on %s</sub>"
+      % (gc_issue_id, gc_issue_id, author, author_link, creation_date))
+    return import_note
+
   def Start(self):
     """The primary function that runs this script.
 
@@ -510,35 +616,101 @@ class IssueExporter(object):
     Raises:
       InvalidUserError: The user passed in a invalid GitHub username.
       InvalidUserMappingError: The user passed in an invalid data object.
+      InvalidProjectData: The user passed in an invalid project dump.
     """
+    # Make sure issue ideas are ascending
+    all_ids = [i["id"] for i in self._issue_json_data]
+    if not all_ids == sorted(all_ids):
+      raise InvalidProjectData("Issue IDs are not sorted")
+
+    print "Getting repository collaborators..."
+    collabs = set(self._repo_service.GetCollaboratorUserNames())
+
+    # Prepare issues.
+    issues = []
+    issue_number = 1
+    i = 0
+    while i < len(self._issue_json_data):
+      issue = self._issue_json_data[i]
+      print "i", i, "issue_number", issue_number, "issueid", issue["id"]
+
+      # If IDs are to be preserved, check for missing Google Code IDs, create
+      # "filler" GitHub issues.
+      if self._preserve_ids and issue["id"] > issue_number:
+        print ("Issue %d missing on Google Code; inserting filler GitHub"
+               " issue" % (issue_number))
+        issues.append({
+          "id": issue_number,
+          "state": "closed",
+          "title": "Filler issue %d" % (issue_number),
+          "body": "<sub>This is a filler issue for the non-existent"
+                  " Google Code issue number %d</sub>" % (issue_number),
+        })
+      else:
+        assignee = self._GetIssueAssignee(issue)
+        issue["assignee"] = assignee
+
+        # Make sure assignee is collaborators of the repo (API requires it)
+        if assignee not in collabs:
+          raise AssigneeNotCollaboratorError(
+            "GitHub user '%s' is to be assigned issue #%d, but not a"
+            " collaborator" % (assignee, issue_number))
+
+        # Add import notes and label changes to all comments
+        for comment in issue["items"]:
+          import_note = self._CommentImportNote(issue, comment)
+          labels = comment["updates"].get("labels", [])
+          comment["content"] = "\n\n".join(
+            [import_note] +
+            ([
+              "--",
+              "<sub>Label changes: `%s`</sub>" % " ".join(labels),
+            ] if labels else []) +
+            [
+              "---",
+              comment["content"],
+            ]
+          )
+
+        # The first comment becomes the issue body
+        issue["body"] = issue["items"][0]["content"]
+        # Delete first comment from comments list
+        del issue["items"][0]
+
+        issues.append(issue)
+        i += 1
+
+      issue_number += 1
+
     issue_total = len(self._issue_json_data)
     skipped_issues = 0
-    for issue_number, issue in enumerate(self._issue_json_data, 1):
+    for issue_number, issue in enumerate(issues, 1):
+
+      gc_issue_id = issue["id"]
 
       # Skip issue if it already exists
-      if issue["title"] in self._previously_created_issues:
+      existing_gh_issue = self._previously_created_issues.get(issue["title"])
+      if existing_gh_issue is not None:
+        if self._preserve_ids and existing_gh_issue["number"] != gc_issue_id:
+          raise IdTakenByOtherIssueError(
+            "Cannot create GitHub issue #%d with title '%s' because it"
+            " already exists as issue #%d and --preserve_ids was given"
+            % (gc_issue_id, issue["title"], existing_gh_issue["number"]))
         skipped_issues += 1
         continue
 
-      issue["assignee"] = self._GetIssueAssignee(issue)
-
       print ("Issue: %d/%d" % (issue_number, issue_total))
 
-      gh_issue_id = self._CreateGitHubIssue(issue)
+      gh_issue_id = self._CreateGitHubIssue(issue,
+        require_id=(gc_issue_id if self._preserve_ids else None))
 
-      if "items" in issue:
-        # The first comment already is the issue body
-        comments = issue["items"][1:]
-        if comments:
-          self._CreateGitHubComments(comments, gh_issue_id)
+      comments = issue.get("items")
+      if comments:
+        self._CreateGitHubComments(comments, gh_issue_id)
 
       # Close the issue if it is closed
       if issue["state"] != "open":
-        response, content = self._issue_service.CloseIssue(gh_issue_id)
-        if not _CheckSuccessful(response):
-          print "Failed to close GitHub issue #%s" % (gh_issue_id)
-          print "Status code: %s" % (response["status"])
-          print "Content:     %s" % (content)
+        self._CloseGitHubIssue(gh_issue_id)
 
     if skipped_issues > 0:
       print ("Skipped %d/%d issue previously uploaded.  Most likely due to"
@@ -573,6 +745,10 @@ def main(args):
   parser.add_argument("--assignee_file_path", required=False,
                       help="The path to the file containing a mapping from"
                       " email address to github username.")
+  parser.add_argument("--preserve_ids", action="store_true",
+                      help="Whether issue IDs shall be mirrored exactly."
+                      " Otherwise the issues are simply added to the existing"
+                      " GitHub issues.")
   parsed_args, unused_unknown_args = parser.parse_known_args(args)
 
   github_service = GitHubService(parsed_args.github_owner_username,
@@ -599,9 +775,11 @@ def main(args):
   if parsed_args.assignee_file_path:
     assignee_data = open(parsed_args.assignee_file_path)
     issue_exporter = IssueExporter(github_service, issue_data,
-                                   assignee_data.read())
+                                   assignee_data=assignee_data.read(),
+                                   preserve_ids=parsed_args.preserve_ids)
   else:
-    issue_exporter = IssueExporter(github_service, issue_data)
+    issue_exporter = IssueExporter(github_service, issue_data,
+                                   preserve_ids=parsed_args.preserve_ids)
 
   try:
     issue_exporter.Init()
